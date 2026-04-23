@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🌿 숲속 마을</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Galmuri11&display=swap');
+  
+  * { margin: 0; padding: 0; box-sizing: border-box; image-rendering: pixelated; }
+
+  :root {
+    --sky-day: #87CEEB;
+    --sky-dusk: #FF9B6A;
+    --sky-night: #1a1a3e;
+    --grass: #5BA55B;
+    --grass-dark: #3d7a3d;
+    --path: #D4A96A;
+    --water: #5BA0D0;
+  }
+
+  body {
+    font-family: 'Galmuri11', monospace, sans-serif;
+    background: #000;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  #game-wrap {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  #sky {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: var(--sky-day);
+    transition: background 2s;
+    z-index: 0;
+  }
+
+  /* Stars */
+  .star {
+    position: absolute;
+    width: 3px; height: 3px;
+    background: #fff;
+    opacity: 0;
+    transition: opacity 1s;
+  }
+
+  #world {
+    position: absolute;
+    z-index: 1;
+    transform-origin: top left;
+  }
+
+  canvas#map {
+    display: block;
+  }
+
+  /* Player */
+  #player {
+    position: absolute;
+    width: 32px; height: 48px;
+    z-index: 10;
+    transition: transform 0.05s;
+  }
+
+  .player-body {
+    position: relative;
+    width: 32px; height: 48px;
+  }
+
+  /* Pixel character */
+  .p-head {
+    position: absolute;
+    top: 0; left: 8px;
+    width: 16px; height: 16px;
+    background: #FFCC99;
+    border: 2px solid #cc9966;
+    border-radius: 2px;
+  }
+  .p-hair {
+    position: absolute;
+    top: -4px; left: 6px;
+    width: 20px; height: 8px;
+    background: #5C3A1E;
+    border-radius: 3px 3px 0 0;
+  }
+  .p-eyes {
+    position: absolute;
+    top: 5px; left: 10px;
+    width: 12px; height: 3px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .p-eye {
+    width: 3px; height: 3px;
+    background: #333;
+  }
+  .p-body {
+    position: absolute;
+    top: 16px; left: 6px;
+    width: 20px; height: 16px;
+    background: #4CAF50;
+    border: 2px solid #2E7D32;
+    border-radius: 2px;
+  }
+  .p-legs {
+    position: absolute;
+    top: 32px; left: 8px;
+    width: 16px; height: 14px;
+    display: flex;
+    gap: 2px;
+  }
+  .p-leg {
+    width: 7px; height: 14px;
+    background: #3E5C9A;
+    border: 1px solid #2a3f6e;
+  }
+
+  /* Walk animation */
+  @keyframes walkL { 0%,100%{transform:skewX(-5deg)} 50%{transform:skewX(5deg)} }
+  @keyframes walkR { 0%,100%{transform:skewX(5deg)} 50%{transform:skewX(-5deg)} }
+  .walking .p-leg:nth-child(1) { animation: walkL 0.3s infinite; }
+  .walking .p-leg:nth-child(2) { animation: walkR 0.3s infinite; }
+
+  /* UI Overlay */
+  #ui {
+    position: fixed;
+    z-index: 100;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  /* HUD top */
+  #hud {
+    position: absolute;
+    top: 12px; left: 12px;
+    background: rgba(0,0,0,0.55);
+    border: 3px solid #5BA55B;
+    border-radius: 8px;
+    padding: 8px 14px;
+    color: #fff;
+    font-size: 13px;
+    line-height: 1.7;
+    min-width: 160px;
+  }
+  #hud .hud-row { display: flex; align-items: center; gap: 6px; }
+  #hud .bell { color: #FFD700; }
+  #hud .time-icon { font-size: 16px; }
+
+  /* Mini map */
+  #minimap {
+    position: absolute;
+    top: 12px; right: 12px;
+    width: 100px; height: 100px;
+    background: rgba(0,0,0,0.6);
+    border: 3px solid #5BA55B;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  #minimap canvas { width: 100%; height: 100%; }
+  #minimap-dot {
+    position: absolute;
+    width: 6px; height: 6px;
+    background: #FFD700;
+    border-radius: 50%;
+    transform: translate(-50%,-50%);
+    box-shadow: 0 0 4px #FFD700;
+  }
+
+  /* Inventory */
+  #inventory {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 6px;
+    pointer-events: all;
+  }
+
+  .inv-slot {
+    width: 52px; height: 52px;
+    background: rgba(0,0,0,0.65);
+    border: 3px solid #5BA55B;
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    cursor: pointer;
+    position: relative;
+    transition: border-color 0.15s, transform 0.1s;
+  }
+  .inv-slot:hover { border-color: #FFD700; transform: translateY(-3px); }
+  .inv-slot.active { border-color: #FFD700; background: rgba(255,215,0,0.15); }
+  .inv-slot .count {
+    position: absolute;
+    bottom: 2px; right: 4px;
+    font-size: 9px;
+    color: #FFD700;
+    font-family: monospace;
+  }
+
+  /* Dialog */
+  #dialog {
+    position: absolute;
+    bottom: 90px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    width: min(480px, 90vw);
+    background: rgba(20,40,20,0.95);
+    border: 4px solid #5BA55B;
+    border-radius: 12px;
+    padding: 16px 20px;
+    color: #e8f5e8;
+    font-size: 14px;
+    line-height: 1.8;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s, transform 0.2s;
+    z-index: 200;
+  }
+  #dialog.visible {
+    opacity: 1;
+    pointer-events: all;
+    transform: translateX(-50%) translateY(0);
+  }
+  #dialog .npc-name {
+    color: #FFD700;
+    font-size: 12px;
+    margin-bottom: 6px;
+    letter-spacing: 1px;
+  }
+  #dialog .close-hint {
+    text-align: right;
+    font-size: 10px;
+    color: #88aa88;
+    margin-top: 8px;
+  }
+  #dialog-close {
+    background: #5BA55B;
+    border: none;
+    color: #fff;
+    padding: 4px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    float: right;
+    margin-top: 8px;
+  }
+
+  /* Notification */
+  #notif {
+    position: absolute;
+    top: 60px; left: 50%;
+    transform: translateX(-50%) translateY(-80px);
+    background: rgba(0,0,0,0.8);
+    border: 3px solid #FFD700;
+    border-radius: 8px;
+    padding: 8px 20px;
+    color: #FFD700;
+    font-size: 13px;
+    transition: transform 0.4s cubic-bezier(0.34,1.56,0.64,1), opacity 0.4s;
+    opacity: 0;
+    white-space: nowrap;
+    z-index: 300;
+  }
+  #notif.show {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+
+  /* Quest panel */
+  #quest {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.6);
+    border: 2px solid #FFD700;
+    border-radius: 6px;
+    padding: 6px 14px;
+    color: #FFD700;
+    font-size: 11px;
+    text-align: center;
+  }
+
+  /* Mobile controls */
+  #dpad {
+    position: absolute;
+    bottom: 80px;
+    left: 20px;
+    pointer-events: all;
+    display: none;
+  }
+  @media (max-width: 600px) { #dpad { display: block; } }
+  .dpad-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 44px);
+    grid-template-rows: repeat(3, 44px);
+    gap: 3px;
+  }
+  .dpad-btn {
+    background: rgba(0,0,0,0.6);
+    border: 2px solid #5BA55B;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .dpad-btn:active { background: rgba(91,165,91,0.4); }
+  .dpad-center { background: rgba(255,215,0,0.2) !important; border-color: #FFD700 !important; font-size: 12px; color: #FFD700; }
+</style>
+</head>
+<body>
+<div id="game-wrap">
+  <div id="sky"></div>
+  <div id="world">
+    <canvas id="map" width="1200" height="900"></canvas>
+  </div>
+
+  <!-- Player -->
+  <div id="player">
+    <div class="player-body">
+      <div class="p-hair"></div>
+      <div class="p-head">
+        <div class="p-eyes"><div class="p-eye"></div><div class="p-eye"></div></div>
+      </div>
+      <div class="p-body"></div>
+      <div class="p-legs">
+        <div class="p-leg"></div>
+        <div class="p-leg"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- UI -->
+  <div id="ui">
+    <div id="hud">
+      <div class="hud-row"><span class="time-icon" id="time-emoji">🌞</span><span id="clock">12:00</span></div>
+      <div class="hud-row"><span class="bell">🔔</span><span id="bells">0 벨</span></div>
+      <div class="hud-row">🌿 <span id="day-name">봄날</span></div>
+    </div>
+
+    <div id="minimap">
+      <canvas id="minimap-canvas" width="100" height="100"></canvas>
+      <div id="minimap-dot"></div>
+    </div>
+
+    <div id="quest">📋 퀘스트: 마을을 탐험하고 아이템을 모아보세요!</div>
+
+    <div id="inventory">
+      <div class="inv-slot active" id="slot0"><span>🎣</span><span class="count" id="cnt0"></span></div>
+      <div class="inv-slot" id="slot1"><span>🪓</span><span class="count" id="cnt1"></span></div>
+      <div class="inv-slot" id="slot2"><span>🌸</span><span class="count" id="cnt2"></span></div>
+      <div class="inv-slot" id="slot3"><span>🐟</span><span class="count" id="cnt3"></span></div>
+      <div class="inv-slot" id="slot4"><span>🪵</span><span class="count" id="cnt4"></span></div>
+      <div class="inv-slot" id="slot5"><span>💎</span><span class="count" id="cnt5"></span></div>
+    </div>
+
+    <div id="dialog">
+      <div class="npc-name" id="dialog-npc">NPC</div>
+      <div id="dialog-text">안녕하세요!</div>
+      <button id="dialog-close" onclick="closeDialog()">닫기 ✕</button>
+    </div>
+
+    <div id="notif">🍎 사과를 획득했습니다!</div>
+
+    <!-- Mobile D-Pad -->
+    <div id="dpad">
+      <div class="dpad-grid">
+        <div></div>
+        <div class="dpad-btn" id="btn-up">▲</div>
+        <div></div>
+        <div class="dpad-btn" id="btn-left">◀</div>
+        <div class="dpad-btn dpad-center" id="btn-act">A</div>
+        <div class="dpad-btn" id="btn-right">▶</div>
+        <div></div>
+        <div class="dpad-btn" id="btn-down">▼</div>
+        <div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== GAME STATE =====
+const state = {
+  player: { x: 400, y: 350, dir: 'down', moving: false },
+  bells: 120,
+  inventory: [0, 0, 0, 0, 0, 0],
+  time: { hours: 10, minutes: 0 },
+  activeSlot: 0,
+  collected: new Set(),
+  quests: { items: 0 },
+};
+
+const TOOLS = ['🎣','🪓','🌸','🐟','🪵','💎'];
+const TOOL_NAMES = ['낚싯대','도끼','꽃','물고기','나무','보석'];
+
+// ===== MAP SETUP =====
+const mapW = 1200, mapH = 900;
+const TILE = 32;
+const canvas = document.getElementById('map');
+const ctx = canvas.getContext('2d');
+
+// Tile types
+const T = { GRASS:0, WATER:1, PATH:2, TREE:3, FLOWER:4, ROCK:5, HOUSE:6, SHOP:7, BRIDGE:8, SAND:9 };
+const colors = {
+  [T.GRASS]: '#5BA55B', [T.WATER]: '#5BA0D0', [T.PATH]: '#D4A96A',
+  [T.TREE]: '#2E7D32', [T.FLOWER]: '#E91E63', [T.ROCK]: '#9E9E9E',
+  [T.HOUSE]: '#FF8C00', [T.SHOP]: '#9C27B0', [T.BRIDGE]: '#A0522D', [T.SAND]: '#F4C971'
+};
+
+// Generate tile map
+const cols = Math.ceil(mapW / TILE);
+const rows = Math.ceil(mapH / TILE);
+const tiles = Array.from({ length: rows }, () => Array(cols).fill(T.GRASS));
+
+function setRect(r1,c1,r2,c2,t) { for(let r=r1;r<=r2;r++) for(let c=c1;c<=c2;c++) if(r>=0&&r<rows&&c>=0&&c<cols) tiles[r][c]=t; }
+function setTile(r,c,t) { if(r>=0&&r<rows&&c>=0&&c<cols) tiles[r][c]=t; }
+
+// River
+setRect(8, 0, 12, cols-1, T.WATER);
+// Sand banks
+setRect(7, 0, 7, cols-1, T.SAND);
+setRect(13, 0, 13, cols-1, T.SAND);
+// Bridges
+setRect(8, 14, 12, 17, T.BRIDGE);
+setRect(8, 25, 12, 28, T.BRIDGE);
+// Main paths
+setRect(0, 11, rows-1, 13, T.PATH);  // vertical
+setRect(13, 0, 15, cols-1, T.PATH); // horizontal
+setRect(0, 22, rows-1, 24, T.PATH);
+// Plaza
+setRect(16, 12, 22, 23, T.PATH);
+// Trees border
+for(let c=0;c<cols;c++) { setTile(0,c,T.TREE); setTile(rows-1,c,T.TREE); }
+for(let r=0;r<rows;r++) { setTile(r,0,T.TREE); setTile(r,cols-1,T.TREE); }
+// Forest patches
+[[2,2],[2,3],[3,2],[4,3],[5,2],[2,30],[3,29],[4,30],[5,29],[6,30]].forEach(([r,c])=>setTile(r,c,T.TREE));
+[[20,2],[21,3],[22,2],[23,3],[20,30],[21,29],[22,30]].forEach(([r,c])=>setTile(r,c,T.TREE));
+// Flowers
+[[3,5],[3,6],[4,6],[5,5],[2,7],[3,8],[18,25],[19,26],[20,25],[21,26]].forEach(([r,c])=>setTile(r,c,T.FLOWER));
+// Rocks
+[[6,8],[6,9],[7,8],[22,15],[22,16],[24,8]].forEach(([r,c])=>setTile(r,c,T.ROCK));
+// Houses
+setRect(2, 15, 5, 19, T.HOUSE);
+setRect(2, 26, 5, 30, T.HOUSE);
+setRect(17, 13, 21, 17, T.SHOP);
+
+// NPCs
+const npcs = [
+  { x: 310, y: 100, emoji: '🐻', name: '곰돌이', color: '#8B4513',
+    dialogs: ['안녕! 오늘 날씨 정말 좋지 않아?', '오늘 강에서 물고기 많이 잡았어!', '우리 마을에 와줘서 고마워~ 🐾'] },
+  { x: 720, y: 120, emoji: '🐰', name: '토순이', color: '#FFB6C1',
+    dialogs: ['당근 좋아해? 나는 정말 좋아해!', '꽃밭에 새 꽃이 피었어! 봤어?', '매일 마을을 돌아다니는 게 취미야 🌸'] },
+  { x: 490, y: 580, emoji: '🦊', name: '여우상인', color: '#FF8C00',
+    dialogs: ['어서오세요~ 필요한 거 있으면 말해요!', '오늘의 특가! 나무 5개에 50벨이에요 🪵', '좋은 물건 많이 가져왔어요~ 구경하세요!'] },
+  { x: 200, y: 600, emoji: '🐸', name: '개구리씨', color: '#4CAF50',
+    dialogs: ['크롱~ 오늘도 비가 안 와서 다행이야', '연못에서 수영하고 싶은데 허락이 안 나네...', '꽃 한 송이 선물할게! 받아줘 🌸'] },
+];
+
+// Collectibles
+const items = [];
+const itemTypes = ['🍎','🍄','🌰','💐','🐚','⭐','🍋','🪨'];
+for(let i=0;i<28;i++){
+  let x,y,tries=0;
+  do { x=Math.random()*(mapW-100)+50; y=Math.random()*(mapH-100)+50; tries++; } 
+  while(tries<50 && isWaterAt(x,y));
+  if(tries<50) items.push({ id:i, x, y, type:itemTypes[i%itemTypes.length], collected:false });
+}
+
+function isWaterAt(wx,wy) {
+  const c=Math.floor(wx/TILE), r=Math.floor(wy/TILE);
+  return r>=0&&r<rows&&c>=0&&c<cols && tiles[r][c]===T.WATER;
+}
+function isBlockedAt(wx,wy) {
+  const c=Math.floor(wx/TILE), r=Math.floor(wy/TILE);
+  if(r<0||r>=rows||c<0||c>=cols) return true;
+  const t=tiles[r][c];
+  return t===T.WATER||t===T.TREE;
+}
+
+// ===== DRAW MAP =====
+function drawMap() {
+  ctx.clearRect(0,0,mapW,mapH);
+  for(let r=0;r<rows;r++) for(let c=0;c<cols;c++) {
+    const t=tiles[r][c];
+    ctx.fillStyle = colors[t];
+    ctx.fillRect(c*TILE, r*TILE, TILE, TILE);
+    // Details
+    if(t===T.GRASS && (r+c)%7===0) { ctx.fillStyle='rgba(0,0,0,0.04)'; ctx.fillRect(c*TILE+2,r*TILE+2,4,4); }
+    if(t===T.TREE) {
+      ctx.fillStyle='#1B5E20';
+      ctx.fillRect(c*TILE+4,r*TILE+4,TILE-8,TILE-8);
+      ctx.fillStyle='#388E3C';
+      ctx.beginPath(); ctx.arc(c*TILE+TILE/2,r*TILE+TILE/2,10,0,Math.PI*2); ctx.fill();
+    }
+    if(t===T.HOUSE) {
+      ctx.fillStyle='#E65100';
+      ctx.fillRect(c*TILE+2,r*TILE+2,TILE-4,TILE-4);
+      ctx.fillStyle='#BF360C';
+      ctx.fillRect(c*TILE,r*TILE,TILE,10);
+    }
+    if(t===T.SHOP) {
+      ctx.fillStyle='#7B1FA2';
+      ctx.fillRect(c*TILE+2,r*TILE+2,TILE-4,TILE-4);
+      ctx.fillStyle='#FFD700'; ctx.font='16px serif';
+      ctx.fillText('🏪',c*TILE+6,r*TILE+22);
+    }
+    if(t===T.WATER) {
+      // Wave shimmer
+      const wave = Math.sin(Date.now()/600+c*0.5)*2;
+      ctx.fillStyle='rgba(255,255,255,0.08)';
+      ctx.fillRect(c*TILE,r*TILE+8+wave,TILE,3);
+    }
+    if(t===T.FLOWER) {
+      ctx.font='20px serif';
+      ctx.fillText(['🌸','🌼','🌺'][((r*3+c)%3)],c*TILE+6,r*TILE+24);
+    }
+    if(t===T.ROCK) {
+      ctx.fillStyle='#757575';
+      ctx.beginPath(); ctx.ellipse(c*TILE+TILE/2,r*TILE+TILE/2+4,11,8,0,0,Math.PI*2); ctx.fill();
+    }
+  }
+  // NPCs
+  npcs.forEach(n => {
+    ctx.font='28px serif'; ctx.fillText(n.emoji, n.x-14, n.y+10);
+    ctx.fillStyle='rgba(0,0,0,0.7)';
+    ctx.fillRect(n.x-22,n.y-28,44,16);
+    ctx.fillStyle='#FFD700'; ctx.font='10px monospace';
+    ctx.fillText(n.name, n.x-20, n.y-16);
+    // Speech bubble hint
+    ctx.fillStyle='#fff'; ctx.font='12px serif';
+    ctx.fillText('💬', n.x+8, n.y-22);
+  });
+  // Items
+  items.forEach(it => {
+    if(it.collected) return;
+    ctx.font='20px serif'; ctx.fillText(it.type, it.x-10, it.y+8);
+    // Sparkle
+    if(Math.random()<0.02){
+      ctx.fillStyle='#FFD700'; ctx.font='8px serif';
+      ctx.fillText('✨',it.x+8,it.y-8);
+    }
+  });
+}
+
+// ===== MINIMAP =====
+const mm = document.getElementById('minimap-canvas');
+const mctx = mm.getContext('2d');
+function drawMinimap() {
+  mctx.clearRect(0,0,100,100);
+  const sx=100/mapW, sy=100/mapH;
+  for(let r=0;r<rows;r++) for(let c=0;c<cols;c++) {
+    mctx.fillStyle=colors[tiles[r][c]];
+    mctx.fillRect(Math.floor(c*TILE*sx),Math.floor(r*TILE*sy),Math.ceil(TILE*sx)+1,Math.ceil(TILE*sy)+1);
+  }
+  // Dot
+  const dot=document.getElementById('minimap-dot');
+  dot.style.left=(state.player.x*sx)+'px';
+  dot.style.top=(state.player.y*sy)+'px';
+}
+
+// ===== CAMERA =====
+const world = document.getElementById('world');
+const playerEl = document.getElementById('player');
+function updateCamera() {
+  const vw=window.innerWidth, vh=window.innerHeight;
+  let cx = state.player.x - vw/2;
+  let cy = state.player.y - vh/2;
+  cx = Math.max(0, Math.min(mapW-vw, cx));
+  cy = Math.max(0, Math.min(mapH-vh, cy));
+  world.style.transform = `translate(${-cx}px, ${-cy}px)`;
+  playerEl.style.left = (state.player.x - cx - 16) + 'px';
+  playerEl.style.top  = (state.player.y - cy - 24) + 'px';
+}
+
+// ===== TIME SYSTEM =====
+function tickTime() {
+  state.time.minutes += 1;
+  if(state.time.minutes >= 60) { state.time.minutes=0; state.time.hours=(state.time.hours+1)%24; }
+  const h=state.time.hours, m=state.time.minutes;
+  document.getElementById('clock').textContent = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+  const sky=document.getElementById('sky');
+  let emoji='🌞';
+  if(h>=5&&h<8)   { sky.style.background='linear-gradient(#FF9B6A,#87CEEB)'; emoji='🌅'; }
+  else if(h>=8&&h<17) { sky.style.background='#87CEEB'; emoji='🌞'; }
+  else if(h>=17&&h<20){ sky.style.background='linear-gradient(#FF6B35,#FF9B6A)'; emoji='🌇'; }
+  else             { sky.style.background='#1a1a3e'; emoji='🌙'; }
+  document.getElementById('time-emoji').textContent=emoji;
+  // Stars at night
+  document.querySelectorAll('.star').forEach(s=>{ s.style.opacity=(h>=20||h<5)?'1':'0'; });
+}
+// Make stars
+const sky=document.getElementById('sky');
+for(let i=0;i<40;i++){
+  const s=document.createElement('div'); s.className='star';
+  s.style.left=Math.random()*100+'%'; s.style.top=Math.random()*50+'%';
+  sky.appendChild(s);
+}
+setInterval(tickTime,200);
+
+// ===== INPUT =====
+const keys = {};
+document.addEventListener('keydown', e=>{
+  keys[e.key]=true;
+  if(e.key===' '||e.key==='Enter') interact();
+  e.preventDefault();
+});
+document.addEventListener('keyup', e=>{ keys[e.key]=false; });
+
+// Mobile
+['up','down','left','right'].forEach(dir=>{
+  const btn=document.getElementById('btn-'+dir);
+  if(!btn) return;
+  btn.addEventListener('touchstart',e=>{keys[dir]=true;e.preventDefault();},{passive:false});
+  btn.addEventListener('touchend',e=>{keys[dir]=false;e.preventDefault();},{passive:false});
+  btn.addEventListener('mousedown',()=>keys[dir]=true);
+  btn.addEventListener('mouseup',()=>keys[dir]=false);
+});
+document.getElementById('btn-act')?.addEventListener('click',interact);
+
+// ===== MOVEMENT =====
+const SPEED=2.5;
+function movePlayer() {
+  const p=state.player;
+  let dx=0,dy=0;
+  if(keys['ArrowLeft']||keys['left']) { dx=-SPEED; p.dir='left'; }
+  if(keys['ArrowRight']||keys['right']) { dx=SPEED; p.dir='right'; }
+  if(keys['ArrowUp']||keys['up']) { dy=-SPEED; p.dir='up'; }
+  if(keys['ArrowDown']||keys['down']) { dy=SPEED; p.dir='down'; }
+  if(dx&&dy){dx*=0.707;dy*=0.707;}
+  const nx=p.x+dx, ny=p.y+dy;
+  if(!isBlockedAt(nx,p.y)) p.x=Math.max(TILE,Math.min(mapW-TILE,nx));
+  if(!isBlockedAt(p.x,ny)) p.y=Math.max(TILE,Math.min(mapH-TILE,ny));
+  const moving=(dx!==0||dy!==0);
+  state.player.moving=moving;
+  const body=playerEl.querySelector('.player-body');
+  if(moving) body.classList.add('walking'); else body.classList.remove('walking');
+  if(dx<0) playerEl.style.transform='scaleX(-1)'; else if(dx>0) playerEl.style.transform='scaleX(1)';
+}
+
+// ===== INTERACT =====
+let dialogOpen=false;
+function interact() {
+  if(dialogOpen){closeDialog();return;}
+  const {x,y}=state.player;
+  // Check NPCs
+  for(const npc of npcs){
+    const dist=Math.hypot(npc.x-x,npc.y-y);
+    if(dist<55){
+      const dlg=npc.dialogs[Math.floor(Math.random()*npc.dialogs.length)];
+      showDialog(npc.name+' '+npc.emoji, dlg);
+      return;
+    }
+  }
+  // Check items
+  for(const it of items){
+    if(it.collected) continue;
+    const dist=Math.hypot(it.x-x,it.y-y);
+    if(dist<40){
+      it.collected=true;
+      const idx=Math.floor(Math.random()*4)+2; // flower, fish, wood, gem slots
+      state.inventory[idx]++;
+      state.bells+=15;
+      state.quests.items++;
+      updateInventoryUI();
+      showNotif(it.type+' 아이템을 획득했습니다! +15벨');
+      updateQuest();
+      return;
+    }
+  }
+  showNotif('💬 근처에 아무것도 없어요...');
+}
+
+function showDialog(name, text) {
+  document.getElementById('dialog-npc').textContent=name;
+  document.getElementById('dialog-text').textContent=text;
+  document.getElementById('dialog').classList.add('visible');
+  dialogOpen=true;
+}
+function closeDialog() {
+  document.getElementById('dialog').classList.remove('visible');
+  dialogOpen=false;
+}
+window.closeDialog=closeDialog;
+
+let notifTimer;
+function showNotif(msg) {
+  const n=document.getElementById('notif');
+  n.textContent=msg;
+  n.classList.add('show');
+  clearTimeout(notifTimer);
+  notifTimer=setTimeout(()=>n.classList.remove('show'),2500);
+}
+
+function updateInventoryUI() {
+  document.getElementById('bells').textContent=state.bells.toLocaleString()+' 벨';
+  state.inventory.forEach((cnt,i)=>{
+    document.getElementById('cnt'+i).textContent=cnt>0?cnt:'';
+  });
+}
+
+function updateQuest() {
+  const q=document.getElementById('quest');
+  const n=state.quests.items;
+  if(n<5) q.textContent=`📋 아이템 수집: ${n}/5개`;
+  else if(n<10) q.textContent=`✅ 1단계 완료! NPC 3명과 대화해보세요`;
+  else q.textContent=`🌟 대단해요! 마을 탐험가 칭호 획득!`;
+}
+
+// Slot selection
+document.querySelectorAll('.inv-slot').forEach((slot,i)=>{
+  slot.addEventListener('click',()=>{
+    document.querySelectorAll('.inv-slot').forEach(s=>s.classList.remove('active'));
+    slot.classList.add('active');
+    state.activeSlot=i;
+    showNotif(`🛠 ${TOOL_NAMES[i]} 선택됨`);
+  });
+});
+
+// ===== MAIN LOOP =====
+let last=0;
+function loop(ts) {
+  movePlayer();
+  updateCamera();
+  // Redraw map with animation
+  if(ts-last>50) { drawMap(); drawMinimap(); last=ts; }
+  requestAnimationFrame(loop);
+}
+
+// Init
+drawMap();
+drawMinimap();
+updateInventoryUI();
+updateCamera();
+requestAnimationFrame(loop);
+showNotif('🌿 숲속 마을에 오신 걸 환영합니다! 방향키로 이동, Space/Enter로 상호작용');
+</script>
+</body>
+</html>
