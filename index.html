@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🌿 숲속 마을 3D</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#000; overflow:hidden; font-family:'Segoe UI',sans-serif; }
+  #c { display:block; width:100vw; height:100vh; }
+  #ui { position:fixed; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:10; }
+  #hud {
+    position:absolute; top:14px; left:14px;
+    background:rgba(10,30,10,0.75); border:2px solid #5BA55B;
+    border-radius:10px; padding:10px 16px; color:#e8f5e8;
+    font-size:13px; line-height:2; backdrop-filter:blur(6px);
+  }
+  #hud .row { display:flex; align-items:center; gap:8px; }
+  #hud .gold { color:#FFD700; }
+  #compass {
+    position:absolute; top:14px; right:14px;
+    width:70px; height:70px;
+    background:rgba(10,30,10,0.75); border:2px solid #5BA55B;
+    border-radius:50%; display:flex; align-items:center; justify-content:center;
+    color:#FFD700; font-size:13px; font-weight:bold; backdrop-filter:blur(6px);
+  }
+  #inventory {
+    position:absolute; bottom:18px; left:50%; transform:translateX(-50%);
+    display:flex; gap:8px; pointer-events:all;
+  }
+  .slot {
+    width:56px; height:56px;
+    background:rgba(10,30,10,0.8); border:2px solid #5BA55B;
+    border-radius:8px; display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    font-size:24px; cursor:pointer; position:relative;
+    transition:border-color .15s, transform .1s; backdrop-filter:blur(6px);
+  }
+  .slot:hover,.slot.active { border-color:#FFD700; transform:translateY(-4px); }
+  .slot .cnt { position:absolute; bottom:3px; right:5px; font-size:9px; color:#FFD700; }
+  #dialog {
+    position:absolute; bottom:100px; left:50%; transform:translateX(-50%) translateY(30px);
+    width:min(460px,88vw);
+    background:rgba(10,30,10,0.92); border:3px solid #5BA55B;
+    border-radius:14px; padding:18px 22px; color:#e8f5e8;
+    font-size:14px; line-height:1.9;
+    opacity:0; pointer-events:none;
+    transition:opacity .25s, transform .25s; backdrop-filter:blur(8px);
+  }
+  #dialog.show { opacity:1; pointer-events:all; transform:translateX(-50%) translateY(0); }
+  #dialog .nname { color:#FFD700; font-size:11px; letter-spacing:1px; margin-bottom:6px; }
+  #dialog button {
+    float:right; margin-top:10px; background:#5BA55B; border:none;
+    color:#fff; padding:4px 14px; border-radius:5px; cursor:pointer; font-size:12px;
+  }
+  #notif {
+    position:absolute; top:70px; left:50%; transform:translateX(-50%) translateY(-60px);
+    background:rgba(10,30,10,0.9); border:2px solid #FFD700;
+    border-radius:8px; padding:8px 22px; color:#FFD700; font-size:13px;
+    opacity:0; transition:transform .4s cubic-bezier(.34,1.56,.64,1), opacity .3s;
+    white-space:nowrap; backdrop-filter:blur(6px);
+  }
+  #notif.show { transform:translateX(-50%) translateY(0); opacity:1; }
+  #quest {
+    position:absolute; top:14px; left:50%; transform:translateX(-50%);
+    background:rgba(10,30,10,0.75); border:2px solid #FFD700;
+    border-radius:8px; padding:6px 16px; color:#FFD700; font-size:12px;
+    backdrop-filter:blur(6px); text-align:center;
+  }
+  #hint {
+    position:absolute; bottom:90px; right:14px;
+    background:rgba(10,30,10,0.7); border:1px solid #5BA55B;
+    border-radius:8px; padding:8px 12px; color:#aaa; font-size:11px;
+    line-height:1.8; backdrop-filter:blur(6px);
+  }
+  #dpad { position:absolute; bottom:90px; left:16px; display:none; pointer-events:all; }
+  @media(max-width:600px){#dpad{display:block;}}
+  .dgrid { display:grid; grid-template-columns:repeat(3,48px); grid-template-rows:repeat(3,48px); gap:4px; }
+  .db {
+    background:rgba(10,30,10,0.75); border:2px solid #5BA55B;
+    border-radius:7px; color:#fff; font-size:20px;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+  }
+  .db:active { background:rgba(91,165,91,0.4); }
+  .dact { border-color:#FFD700!important; color:#FFD700; font-size:12px; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <div id="hud">
+    <div class="row"><span id="t-ico">🌞</span><span id="clock">10:00</span></div>
+    <div class="row"><span class="gold">🔔</span><span id="bells">120 벨</span></div>
+    <div class="row">🌿 봄날의 마을</div>
+  </div>
+  <div id="compass">N</div>
+  <div id="quest">📋 마을을 탐험하고 아이템을 모아보세요!</div>
+  <div id="inventory">
+    <div class="slot active">🎣<span class="cnt" id="c0"></span></div>
+    <div class="slot">🪓<span class="cnt" id="c1"></span></div>
+    <div class="slot">🌸<span class="cnt" id="c2"></span></div>
+    <div class="slot">🐟<span class="cnt" id="c3"></span></div>
+    <div class="slot">🪵<span class="cnt" id="c4"></span></div>
+    <div class="slot">💎<span class="cnt" id="c5"></span></div>
+  </div>
+  <div id="dialog">
+    <div class="nname" id="dnpc"></div>
+    <div id="dtext"></div>
+    <button onclick="closeDialog()">닫기 ✕</button>
+  </div>
+  <div id="notif"></div>
+  <div id="hint">⌨️ WASD / 방향키: 이동<br>🖱️ 드래그: 카메라 회전<br>Space / Enter: 상호작용</div>
+  <div id="dpad">
+    <div class="dgrid">
+      <div></div><div class="db" id="bu">▲</div><div></div>
+      <div class="db" id="bl">◀</div><div class="db dact" id="ba">A</div><div class="db" id="br">▶</div>
+      <div></div><div class="db" id="bd">▼</div><div></div>
+    </div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const renderer=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true});
+renderer.setSize(window.innerWidth,window.innerHeight);
+renderer.shadowMap.enabled=true;
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x87CEEB);
+scene.fog=new THREE.Fog(0x87CEEB,30,90);
+
+const camera=new THREE.PerspectiveCamera(60,window.innerWidth/window.innerHeight,0.1,200);
+camera.position.set(0,14,18);
+
+window.addEventListener('resize',()=>{
+  renderer.setSize(window.innerWidth,window.innerHeight);
+  camera.aspect=window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+});
+
+// Lights
+const ambient=new THREE.AmbientLight(0xffeedd,0.65);
+scene.add(ambient);
+const sun=new THREE.DirectionalLight(0xfff5cc,1.2);
+sun.position.set(25,45,25);
+sun.castShadow=true;
+sun.shadow.mapSize.set(2048,2048);
+sun.shadow.camera.left=-60; sun.shadow.camera.right=60;
+sun.shadow.camera.top=60; sun.shadow.camera.bottom=-60;
+sun.shadow.camera.far=120;
+scene.add(sun);
+
+// Helpers
+const T=c=>new THREE.MeshToonMaterial({color:new THREE.Color(c)});
+const L=c=>new THREE.MeshLambertMaterial({color:new THREE.Color(c)});
+
+function box(w,h,d,c,x,y,z){
+  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),T(c));
+  m.position.set(x,y,z); m.castShadow=true; m.receiveShadow=true; scene.add(m); return m;
+}
+function cyl(rt,rb,h,seg,c,x,y,z){
+  const m=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,seg),T(c));
+  m.position.set(x,y,z); m.castShadow=true; m.receiveShadow=true; scene.add(m); return m;
+}
+function cone(r,h,seg,c,x,y,z){
+  const m=new THREE.Mesh(new THREE.ConeGeometry(r,h,seg),T(c));
+  m.position.set(x,y,z); m.castShadow=true; scene.add(m); return m;
+}
+
+// Ground
+const gnd=new THREE.Mesh(new THREE.PlaneGeometry(120,120),L('#5BA55B'));
+gnd.rotation.x=-Math.PI/2; gnd.receiveShadow=true; scene.add(gnd);
+
+// Paths
+[[3,120,0,0.01,0],[120,3,0,0.01,8]].forEach(([w,d,x,y,z])=>{
+  const p=new THREE.Mesh(new THREE.PlaneGeometry(w,d),L('#D4A96A'));
+  p.rotation.x=-Math.PI/2; p.position.set(x,y,z); scene.add(p);
+});
+
+// River
+const rv=new THREE.Mesh(new THREE.PlaneGeometry(120,7),new THREE.MeshLambertMaterial({color:0x5BA0D0,transparent:true,opacity:0.85}));
+rv.rotation.x=-Math.PI/2; rv.position.set(0,0.02,-16); scene.add(rv);
+// Bridge
+box(3.5,0.4,7,'#A0522D',0,0.3,-16);
+
+// Trees
+function tree(x,z,s=1){
+  cyl(0.2*s,0.3*s,1.5*s,6,'#8B5E3C',x,0.75*s,z);
+  cone(1.5*s,2.8*s,7,'#2E7D32',x,2.7*s,z);
+  cone(1.1*s,2.2*s,7,'#388E3C',x,3.8*s,z);
+  cone(0.7*s,1.6*s,7,'#43A047',x,4.7*s,z);
+}
+[[-9,9],[-11,5],[-13,1],[-11,-4],[-9,-8],[-13,-12],
+ [9,9],[11,5],[13,1],[11,-4],[9,-8],[13,-12],
+ [-6,-22],[-2,-24],[2,-24],[6,-22],
+ [-16,16],[-11,20],[11,20],[16,16],
+ [-5,24],[0,26],[5,24]
+].forEach(([x,z])=>tree(x,z,0.75+Math.random()*0.55));
+
+// Flowers
+function flower(x,z,c){
+  cyl(0.04,0.04,0.5,5,'#4CAF50',x,0.25,z);
+  new THREE.Mesh(new THREE.SphereGeometry(0.2,8,8),T(c));
+  const b=new THREE.Mesh(new THREE.SphereGeometry(0.2,8,8),T(c));
+  b.position.set(x,0.65,z); b.castShadow=true; scene.add(b);
+}
+[[-3,-4],[-3.5,-5],[-4,-4],[3,-4],[3.5,-5],[4,-4],
+ [-8,3],[-8.5,4],[8,3],[8.5,4]
+].forEach(([x,z])=>flower(x,z,['#E91E63','#FF9800','#FFEB3B','#9C27B0'][Math.floor(Math.random()*4)]));
+
+// Rocks
+[[-6,7],[-6.5,8],[6,7],[6.5,8],[-10,-9],[10,-9]].forEach(([x,z])=>{
+  const m=new THREE.Mesh(new THREE.DodecahedronGeometry(0.5,0),T('#9E9E9E'));
+  m.position.set(x,0.3,z); m.scale.y=0.7; m.castShadow=true; scene.add(m);
+});
+
+// Houses
+function house(x,z,wc,rc,rot=0){
+  const g=new THREE.Group();
+  const w=new THREE.Mesh(new THREE.BoxGeometry(4,3,4),T(wc)); w.position.y=1.5; w.castShadow=true; w.receiveShadow=true; g.add(w);
+  const r=new THREE.Mesh(new THREE.ConeGeometry(3.2,2.5,4),T(rc)); r.position.y=4.25; r.rotation.y=Math.PI/4; r.castShadow=true; g.add(r);
+  const d=new THREE.Mesh(new THREE.BoxGeometry(0.9,1.6,0.1),T('#5C3A1E')); d.position.set(0,0.8,2.05); g.add(d);
+  [[-1.2,2],[1.2,2]].forEach(([wx,wy])=>{
+    const wn=new THREE.Mesh(new THREE.BoxGeometry(0.8,0.8,0.1),T('#AEE4FF')); wn.position.set(wx,wy,2.05); g.add(wn);
+  });
+  g.position.set(x,0,z); g.rotation.y=rot; scene.add(g);
+  // Chimney
+  cyl(0.18,0.18,1,4,'#8B4513',x+1.2*(Math.cos(rot)),5.5,z-1.2*(Math.sin(rot)));
+}
+house(-13,-4,'#FFF8E1','#E53935',0.2);
+house(13,-4,'#E8F5E9','#1565C0',-0.2);
+house(-6,20,'#FCE4EC','#6A1B9A',0);
+house(6,20,'#E3F2FD','#2E7D32',0);
+
+// Shop
+(function(){
+  const g=new THREE.Group();
+  const w=new THREE.Mesh(new THREE.BoxGeometry(5,3.5,5),T('#7B1FA2')); w.position.y=1.75; w.castShadow=true; w.receiveShadow=true; g.add(w);
+  const r=new THREE.Mesh(new THREE.BoxGeometry(5.8,0.5,5.8),T('#4A148C')); r.position.y=3.75; g.add(r);
+  const s=new THREE.Mesh(new THREE.BoxGeometry(3,0.8,0.15),T('#FFD700')); s.position.set(0,3.1,2.6); g.add(s);
+  const d=new THREE.Mesh(new THREE.BoxGeometry(1.2,2,0.1),T('#4A148C')); d.position.set(0,1,2.6); g.add(d);
+  g.position.set(0,0,11); scene.add(g);
+})();
+
+// NPC factory
+function makeNPC(x,z,bc,name,dialogs){
+  const g=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.BoxGeometry(0.7,1,0.5),T(bc)); body.position.y=0.9; body.castShadow=true; g.add(body);
+  const head=new THREE.Mesh(new THREE.BoxGeometry(0.65,0.65,0.55),T('#FFCC99')); head.position.y=1.72; head.castShadow=true; g.add(head);
+  const hair=new THREE.Mesh(new THREE.BoxGeometry(0.7,0.2,0.6),T('#5C3A1E')); hair.position.y=2.02; g.add(hair);
+  const eG=new THREE.SphereGeometry(0.07,6,6),eM=T('#333');
+  [-0.15,0.15].forEach(ex=>{ const e=new THREE.Mesh(eG,eM); e.position.set(ex,1.74,0.28); g.add(e); });
+  const lG=new THREE.BoxGeometry(0.28,0.7,0.28),lM=T('#3E5C9A');
+  const ll=new THREE.Mesh(lG,lM); ll.position.set(-0.2,0.35,0); g.add(ll);
+  const lr=new THREE.Mesh(lG,lM); lr.position.set(0.2,0.35,0); g.add(lr);
+  g.position.set(x,0,z);
+  g.userData={name,dialogs,isNPC:true};
+  scene.add(g); return g;
+}
+
+const npcs=[
+  makeNPC(-10,3,'#4CAF50','곰돌이 🐻',['안녕! 오늘 날씨 정말 좋지 않아?','강에서 물고기 많이 잡았어!','우리 마을에 와줘서 고마워~ 🐾']),
+  makeNPC(10,3,'#E91E63','토순이 🐰',['당근 좋아해? 나는 정말 좋아해!','꽃밭에 새 꽃이 피었어!','매일 마을을 돌아다니는 게 취미야 🌸']),
+  makeNPC(1,11,'#FF8C00','여우상인 🦊',['어서오세요~ 필요한 거 있으면 말해요!','오늘의 특가! 나무 5개에 50벨이에요 🪵','좋은 물건 많이 가져왔어요~']),
+  makeNPC(-11,17,'#2196F3','개구리씨 🐸',['크롱~ 오늘도 비가 안 와서 다행이야!','연못에서 수영하고 싶은데...','꽃 한 송이 선물할게! 🌸']),
+];
+
+// Collectibles
+const collectibles=[];
+const cTypes=['🍎','🍄','🌰','💐','🐚','⭐','🍋','🪨'];
+for(let i=0;i<22;i++){
+  const a=Math.random()*Math.PI*2, r=4+Math.random()*22;
+  const x=Math.cos(a)*r, z=Math.sin(a)*r;
+  if(Math.abs(z+16)<4&&Math.abs(x)>1.5) continue;
+  const g=new THREE.Group();
+  const base=new THREE.Mesh(new THREE.SphereGeometry(0.28,8,8),
+    new THREE.MeshToonMaterial({color:0xFFD700,emissive:0xFFAA00,emissiveIntensity:0.4}));
+  g.add(base);
+  const ring=new THREE.Mesh(new THREE.TorusGeometry(0.38,0.06,8,16),
+    new THREE.MeshToonMaterial({color:0xffffff,transparent:true,opacity:0.5}));
+  ring.rotation.x=Math.PI/2; g.add(ring);
+  g.position.set(x,0.5,z);
+  g.userData={itemType:cTypes[i%cTypes.length]};
+  scene.add(g);
+  collectibles.push({mesh:g,collected:false});
+}
+
+// Player
+const player=new THREE.Group();
+const pb=new THREE.Mesh(new THREE.BoxGeometry(0.7,1,0.5),T('#4CAF50')); pb.position.y=0.9; pb.castShadow=true; player.add(pb);
+const ph=new THREE.Mesh(new THREE.BoxGeometry(0.65,0.65,0.55),T('#FFCC99')); ph.position.y=1.72; ph.castShadow=true; player.add(ph);
+const phair=new THREE.Mesh(new THREE.BoxGeometry(0.7,0.22,0.62),T('#5C3A1E')); phair.position.y=2.02; player.add(phair);
+const eG2=new THREE.SphereGeometry(0.07,6,6),eM2=T('#333');
+[-0.15,0.15].forEach(ex=>{ const e=new THREE.Mesh(eG2,eM2); e.position.set(ex,1.74,0.28); player.add(e); });
+const lG2=new THREE.BoxGeometry(0.28,0.7,0.28),lM2=T('#3E5C9A');
+const pll=new THREE.Mesh(lG2,lM2); pll.position.set(-0.2,0.35,0); player.add(pll);
+const plr=new THREE.Mesh(lG2,lM2); plr.position.set(0.2,0.35,0); player.add(plr);
+player.position.set(0,0,3);
+scene.add(player);
+
+// Camera control
+let camYaw=0, camPitch=0.45, isDrag=false, lmx=0, lmy=0;
+const cv=document.getElementById('c');
+cv.addEventListener('mousedown',e=>{isDrag=true;lmx=e.clientX;lmy=e.clientY;});
+window.addEventListener('mouseup',()=>isDrag=false);
+window.addEventListener('mousemove',e=>{
+  if(!isDrag)return;
+  camYaw-=(e.clientX-lmx)*0.005;
+  camPitch=Math.max(0.1,Math.min(0.85,camPitch+(e.clientY-lmy)*0.005));
+  lmx=e.clientX; lmy=e.clientY;
+});
+cv.addEventListener('touchstart',e=>{isDrag=true;lmx=e.touches[0].clientX;lmy=e.touches[0].clientY;},{passive:true});
+cv.addEventListener('touchend',()=>isDrag=false,{passive:true});
+cv.addEventListener('touchmove',e=>{
+  if(!isDrag)return;
+  camYaw-=(e.touches[0].clientX-lmx)*0.006;
+  camPitch=Math.max(0.1,Math.min(0.85,camPitch+(e.touches[0].clientY-lmy)*0.006));
+  lmx=e.touches[0].clientX; lmy=e.touches[0].clientY;
+},{passive:true});
+
+// Input
+const keys={};
+document.addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='Space'||e.code==='Enter'){interact();e.preventDefault();}});
+document.addEventListener('keyup',e=>keys[e.code]=false);
+['bu','bd','bl','br'].forEach((id,i)=>{
+  const el=document.getElementById(id), dk=['up','down','left','right'][i];
+  el.addEventListener('touchstart',e=>{keys[dk]=true;e.stopPropagation();},{passive:true});
+  el.addEventListener('touchend',()=>keys[dk]=false);
+  el.addEventListener('mousedown',()=>keys[dk]=true);
+  el.addEventListener('mouseup',()=>keys[dk]=false);
+});
+document.getElementById('ba').addEventListener('click',interact);
+document.querySelectorAll('.slot').forEach(s=>{
+  s.addEventListener('click',()=>{
+    document.querySelectorAll('.slot').forEach(x=>x.classList.remove('active'));
+    s.classList.add('active');
+  });
+});
+
+// Game state
+const gs={bells:120,inv:[0,0,0,0,0,0],items:0};
+let dlgOpen=false;
+
+function interact(){
+  if(dlgOpen){closeDialog();return;}
+  const pp=player.position;
+  for(const n of npcs){
+    if(pp.distanceTo(n.position)<4){
+      const d=n.userData.dialogs[Math.floor(Math.random()*n.userData.dialogs.length)];
+      showDlg(n.userData.name,d); return;
+    }
+  }
+  for(const c of collectibles){
+    if(c.collected)continue;
+    if(pp.distanceTo(c.mesh.position)<2.8){
+      c.collected=true; c.mesh.visible=false;
+      const idx=2+Math.floor(Math.random()*4);
+      gs.inv[idx]++; gs.bells+=15; gs.items++;
+      updateUI(); showNotif(c.mesh.userData.itemType+' 획득! +15벨'); updateQuest();
+      return;
+    }
+  }
+  showNotif('💬 근처에 아무것도 없어요...');
+}
+function showDlg(name,text){
+  document.getElementById('dnpc').textContent=name;
+  document.getElementById('dtext').textContent=text;
+  document.getElementById('dialog').classList.add('show');
+  dlgOpen=true;
+}
+function closeDialog(){document.getElementById('dialog').classList.remove('show');dlgOpen=false;}
+window.closeDialog=closeDialog;
+let ntT; function showNotif(msg){
+  const n=document.getElementById('notif'); n.textContent=msg; n.classList.add('show');
+  clearTimeout(ntT); ntT=setTimeout(()=>n.classList.remove('show'),2600);
+}
+function updateUI(){
+  document.getElementById('bells').textContent=gs.bells.toLocaleString()+' 벨';
+  gs.inv.forEach((v,i)=>{document.getElementById('c'+i).textContent=v>0?v:'';});
+}
+function updateQuest(){
+  const q=document.getElementById('quest'),n=gs.items;
+  if(n<5) q.textContent=`📋 아이템 수집: ${n}/5개`;
+  else if(n<10) q.textContent=`✅ 완료! NPC들과 대화해보세요 💬`;
+  else q.textContent=`🌟 마을 탐험가 칭호 획득!`;
+}
+
+// Time
+let gt=600;
+setInterval(()=>{
+  gt=(gt+1)%1440;
+  const h=Math.floor(gt/60),m=gt%60;
+  document.getElementById('clock').textContent=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+  let ico='🌞',sky=0x87CEEB,ai=0.65;
+  if(h>=5&&h<8){ico='🌅';sky=0xFF9966;ai=0.5;}
+  else if(h>=17&&h<20){ico='🌇';sky=0xFF6633;ai=0.5;}
+  else if(h>=20||h<5){ico='🌙';sky=0x1a1a3e;ai=0.25;}
+  document.getElementById('t-ico').textContent=ico;
+  scene.background.set(sky); scene.fog.color.set(sky); ambient.intensity=ai;
+  sun.intensity=ai>0.5?1.2:0.35;
+},200);
+
+// Main loop
+const clock3=new THREE.Clock(); let walkP=0;
+function loop(){
+  requestAnimationFrame(loop);
+  const dt=clock3.getDelta();
+  const SPEED=5.5;
+  const pp=player.position;
+  const fwd=new THREE.Vector3(-Math.sin(camYaw),0,-Math.cos(camYaw));
+  const rgt=new THREE.Vector3(Math.cos(camYaw),0,-Math.sin(camYaw));
+  let mv=new THREE.Vector3(),moved=false;
+  if(keys['KeyW']||keys['ArrowUp']||keys['up']){mv.add(fwd);moved=true;}
+  if(keys['KeyS']||keys['ArrowDown']||keys['down']){mv.sub(fwd);moved=true;}
+  if(keys['KeyA']||keys['ArrowLeft']||keys['left']){mv.sub(rgt);moved=true;}
+  if(keys['KeyD']||keys['ArrowRight']||keys['right']){mv.add(rgt);moved=true;}
+  if(moved){
+    mv.normalize().multiplyScalar(SPEED*dt);
+    const nx=pp.x+mv.x, nz=pp.z+mv.z;
+    const inRiver=Math.abs(nz+16)<3.2&&Math.abs(nx)>1.8;
+    if(!inRiver){ pp.x=Math.max(-48,Math.min(48,nx)); pp.z=Math.max(-48,Math.min(48,nz)); }
+    if(mv.length()>0.001) player.rotation.y=Math.atan2(mv.x,mv.z);
+    walkP+=dt*8;
+    pll.position.y=0.35+Math.sin(walkP)*0.15;
+    plr.position.y=0.35-Math.sin(walkP)*0.15;
+  } else { pll.position.y=0.35; plr.position.y=0.35; }
+
+  // Animate collectibles
+  const now=Date.now();
+  collectibles.forEach((c,i)=>{
+    if(c.collected)return;
+    c.mesh.position.y=0.45+Math.sin(now*0.002+i)*0.18;
+    c.mesh.rotation.y+=dt*1.2;
+  });
+  // Animate NPCs
+  npcs.forEach((n,i)=>{
+    n.position.y=Math.sin(now*0.001+i*1.3)*0.06;
+    n.rotation.y=Math.sin(now*0.0005+i)*0.35;
+  });
+
+  // Camera
+  const cd=15, ch=camPitch*22;
+  const tx=pp.x+Math.sin(camYaw)*cd;
+  const tz=pp.z+Math.cos(camYaw)*cd;
+  camera.position.lerp(new THREE.Vector3(tx,ch,tz),0.08);
+  camera.lookAt(pp.x,1.5,pp.z);
+
+  // Compass
+  const deg=((camYaw%(Math.PI*2))/(Math.PI*2)*360+360)%360;
+  const dirs=['N','NE','E','SE','S','SW','W','NW'];
+  document.getElementById('compass').textContent=dirs[Math.round(deg/45)%8];
+
+  renderer.render(scene,camera);
+}
+
+updateUI(); loop();
+showNotif('🌿 숲속 마을 3D! WASD 이동, Space 상호작용, 드래그 카메라');
+</script>
+</body>
+</html>
